@@ -7,14 +7,15 @@ const { key, domain, sender } = keys.mailgun;
 
 class MailgunService {
   init() {
-    try {
-      return new Mailgun({
-        apiKey: key,
-        domain: domain
-      });
-    } catch (error) {
-      console.warn('Missing mailgun keys');
+    if (!key || !domain || !sender) {
+      console.warn('Missing Mailgun configuration. Mailgun email sending is disabled.');
+      return null;
     }
+
+    return new Mailgun({
+      apiKey: key,
+      domain: domain
+    });
   }
 }
 
@@ -22,6 +23,10 @@ const mailgun = new MailgunService().init();
 
 exports.sendEmail = async (email, type, host, data) => {
   try {
+    if (!mailgun) {
+      throw new Error('Mailgun is not configured. Set MAILGUN_KEY, MAILGUN_DOMAIN, and MAILGUN_EMAIL_SENDER.');
+    }
+
     const message = prepareTemplate(type, host, data);
 
     const config = {

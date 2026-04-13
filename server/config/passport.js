@@ -13,6 +13,12 @@ const { google, facebook } = keys;
 const User = mongoose.model('User');
 const secret = keys.jwt.secret;
 
+if (!secret) {
+  throw new Error(
+    'JWT_SECRET is required. Please set process.env.JWT_SECRET in your .env or deployment environment.'
+  );
+}
+
 const opts = {};
 opts.jwtFromRequest = ExtractJwt.fromAuthHeaderAsBearerToken();
 opts.secretOrKey = secret;
@@ -41,100 +47,102 @@ module.exports = async app => {
 };
 
 const googleAuth = async () => {
-  try {
-    passport.use(
-      new GoogleStrategy(
-        {
-          clientID: google.clientID,
-          clientSecret: google.clientSecret,
-          callbackURL: google.callbackURL
-        },
-        (accessToken, refreshToken, profile, done) => {
-          User.findOne({ email: profile.email })
-            .then(user => {
-              if (user) {
-                return done(null, user);
+  if (!google.clientID || !google.clientSecret || !google.callbackURL) {
+    console.warn('Missing Google OAuth keys. Skipping Google authentication setup.');
+    return;
+  }
+
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: google.clientID,
+        clientSecret: google.clientSecret,
+        callbackURL: google.callbackURL
+      },
+      (accessToken, refreshToken, profile, done) => {
+        User.findOne({ email: profile.email })
+          .then(user => {
+            if (user) {
+              return done(null, user);
+            }
+
+            const name = profile.displayName.split(' ');
+
+            const newUser = new User({
+              provider: EMAIL_PROVIDER.Google,
+              googleId: profile.id,
+              email: profile.email,
+              firstName: name[0],
+              lastName: name[1],
+              avatar: profile.picture,
+              password: null
+            });
+
+            newUser.save((err, user) => {
+              if (err) {
+                return done(err, false);
               }
 
-              const name = profile.displayName.split(' ');
-
-              const newUser = new User({
-                provider: EMAIL_PROVIDER.Google,
-                googleId: profile.id,
-                email: profile.email,
-                firstName: name[0],
-                lastName: name[1],
-                avatar: profile.picture,
-                password: null
-              });
-
-              newUser.save((err, user) => {
-                if (err) {
-                  return done(err, false);
-                }
-
-                return done(null, user);
-              });
-            })
-            .catch(err => {
-              return done(err, false);
+              return done(null, user);
             });
-        }
-      )
-    );
-  } catch (error) {
-    console.log('Missing google keys');
-  }
+          })
+          .catch(err => {
+            return done(err, false);
+          });
+      }
+    )
+  );
 };
 
 const facebookAuth = async () => {
-  try {
-    passport.use(
-      new FacebookStrategy(
-        {
-          clientID: facebook.clientID,
-          clientSecret: facebook.clientSecret,
-          callbackURL: facebook.callbackURL,
-          profileFields: [
-            'id',
-            'displayName',
-            'name',
-            'emails',
-            'picture.type(large)'
-          ]
-        },
-        (accessToken, refreshToken, profile, done) => {
-          User.findOne({ facebookId: profile.id })
-            .then(user => {
-              if (user) {
-                return done(null, user);
+  if (!facebook.clientID || !facebook.clientSecret || !facebook.callbackURL) {
+    console.warn('Missing Facebook OAuth keys. Skipping Facebook authentication setup.');
+    return;
+  }
+
+  passport.use(
+    new FacebookStrategy(
+      {
+        clientID: facebook.clientID,
+        clientSecret: facebook.clientSecret,
+        callbackURL: facebook.callbackURL,
+        profileFields: [
+          'id',
+          'displayName',
+          'name',
+          'emails',
+          'picture.type(large)'
+        ]
+      },
+      (accessToken, refreshToken, profile, done) => {
+        User.findOne({ facebookId: profile.id })
+          .then(user => {
+            if (user) {
+              return done(null, user);
+            }
+
+            const newUser = new User({
+              provider: EMAIL_PROVIDER.Facebook,
+              facebookId: profile.id,
+              email: profile.emails ? profile.emails[0].value : null,
+              firstName: profile.name.givenName,
+              lastName: profile.name.familyName,
+              avatar: profile.photos[0].value,
+              password: null
+            });
+
+            newUser.save((err, user) => {
+              if (err) {
+                return done(err, false);
               }
 
-              const newUser = new User({
-                provider: EMAIL_PROVIDER.Facebook,
-                facebookId: profile.id,
-                email: profile.emails ? profile.emails[0].value : null,
-                firstName: profile.name.givenName,
-                lastName: profile.name.familyName,
-                avatar: profile.photos[0].value,
-                password: null
-              });
-
-              newUser.save((err, user) => {
-                if (err) {
-                  return done(err, false);
-                }
-
-                return done(null, user);
-              });
-            })
-            .catch(err => {
-              return done(err, false);
+              return done(null, user);
             });
-        }
-      )
-    );
-  } catch (error) {
-    console.log('Missing facebook keys');
-  }
+          })
+          .catch(err => {
+            return done(err, false);
+          });
+      }
+    )
+  );
 };
